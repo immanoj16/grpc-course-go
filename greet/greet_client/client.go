@@ -24,7 +24,8 @@ func main() {
 
 	// doUnary(c)
 	// doServerStreaming(c)
-	doClientStreaming(c)
+	// doClientStreaming(c)
+	doBiDiStreaming(c)
 }
 
 func doUnary(c greetpb.GreetServiceClient) {
@@ -120,4 +121,85 @@ func doClientStreaming(c greetpb.GreetServiceClient) {
 		log.Fatalf("error while receiving response from LongGreet: %v", err)
 	}
 	fmt.Printf("LongGreet Response: %v\n", res.GetResult())
+}
+
+func doBiDiStreaming(c greetpb.GreetServiceClient) {
+	fmt.Println("Starting to do a bidi streaming RPC...")
+
+	// Create a stream by invoking the client
+	stream, err := c.GreetEveryone(context.Background())
+	if err != nil {
+		log.Fatalf("error while creating stream: %v", err)
+		return
+	}
+
+	requests := []*greetpb.GreetEveryoneRequest{
+		{
+			Greeting: &greetpb.Greeting{
+				FirstName: "Manoj",
+				LastName:  "Kumar",
+			},
+		},
+		{
+			Greeting: &greetpb.Greeting{
+				FirstName: "Kanhu",
+				LastName:  "Kumar",
+			},
+		},
+		{
+			Greeting: &greetpb.Greeting{
+				FirstName: "sldfs",
+				LastName:  "Kumar",
+			},
+		},
+		{
+			Greeting: &greetpb.Greeting{
+				FirstName: "Masdfsdfnoj",
+				LastName:  "Kumar",
+			},
+		},
+		{
+			Greeting: &greetpb.Greeting{
+				FirstName: "sdfsdf",
+				LastName:  "Kumar",
+			},
+		},
+	}
+
+	waitc := make(chan struct{})
+	// send a bunch of message to the server (go routine)
+	go func() {
+		for _, req := range requests {
+			fmt.Printf("Sending request: %v\n", req)
+			err := stream.Send(req)
+			if err != nil {
+				log.Fatalf("Couldn't send request %v", err)
+				continue
+			}
+			time.Sleep(1000 * time.Millisecond)
+		}
+		err = stream.CloseSend()
+		if err != nil {
+			log.Fatalf("Couldn't close request %v", err)
+		}
+	}()
+
+	// recieve a bunch of messages from the server
+	go func() {
+		for {
+			res, err := stream.Recv()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				log.Fatalf("error while receiving %v", err)
+				break
+			}
+			fmt.Printf("Received %v\n", res.Result)
+		}
+		close(waitc)
+	}()
+
+	// block until everyting is done
+	<-waitc
 }
